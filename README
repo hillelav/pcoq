@@ -1,0 +1,12 @@
+## System Requirements
+
+- Coq ≥ 8.17
+- Python ≥ 3.9
+- Unix-like shell (macOS / Linux recommended)
+
+macOS:
+  brew install coq
+
+Ubuntu:
+  sudo apt install coq
+
