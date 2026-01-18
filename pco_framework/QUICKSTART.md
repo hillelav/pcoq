@@ -9,14 +9,17 @@
 ```bash
 cd /Users/hillelavni/Documents/project/pcoq_trunk/pcoq/pco_framework
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (choose one or both)
+pip install anthropic  # For Claude API (recommended)
+pip install openai     # For OpenAI API
 
 # Install Coq
 brew install coq
 
-# Set API key
-export OPENAI_API_KEY="sk-your-key-here"
+# Set API key (choose one)
+export ANTHROPIC_API_KEY="sk-ant-your-key"
+# OR
+export OPENAI_API_KEY="sk-your-key"
 ```
 
 ## Run Dashboard (1 command)

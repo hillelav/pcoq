@@ -50,6 +50,9 @@ def main():
     
     # Required modules
     checks.append(("tkinter", *check_module("tkinter")))
+    
+    # LLM modules (at least one needed)
+    checks.append(("anthropic (Claude)", *check_module("anthropic")))
     checks.append(("openai", *check_module("openai")))
     
     # Optional but recommended
@@ -82,8 +85,12 @@ def main():
     else:
         print("⚠️  Some components missing:")
         print()
-        if not check_module("openai")[0]:
-            print("  pip install openai")
+        has_anthropic = check_module("anthropic")[0]
+        has_openai = check_module("openai")[0]
+        if not has_anthropic and not has_openai:
+            print("  pip install anthropic  # For Claude (recommended)")
+            print("  # OR")
+            print("  pip install openai     # For OpenAI")
         if not check_command("coqc")[0]:
             print("  brew install coq")
     

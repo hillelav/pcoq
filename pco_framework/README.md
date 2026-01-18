@@ -31,13 +31,34 @@ The PCO Framework automates the generation, verification, and recording of regul
 ```bash
 cd /Users/hillelavni/Documents/project/pcoq_trunk/pcoq/pco_framework
 
-# Install dependencies
-pip install openai  # For LLM integration
-brew install coq    # For verification
+# Install dependencies (choose one or both)
+pip install anthropic  # For Claude API (recommended)
+pip install openai     # For OpenAI API
 
-# Set API key
-export OPENAI_API_KEY="your-key-here"
+# For verification
+brew install coq
+
+# Set API key (choose one)
+export ANTHROPIC_API_KEY="sk-ant-api03-your-key"
+# OR
+export OPENAI_API_KEY="sk-your-key"
+
+# Run diagnostics to verify setup
+python3 diagnose_api.py
 ```
+
+## ⚠️ Getting API Errors?
+
+If you see "No available Claude models found" or similar errors:
+
+```bash
+# Run comprehensive diagnostics
+python3 diagnose_api.py
+
+# This will show exactly what's wrong and how to fix it
+```
+
+See `API_ISSUES.md` for detailed troubleshooting.
 
 ## Usage
 
@@ -180,14 +201,29 @@ brew install coq
 
 ### "API key error"
 ```bash
+export ANTHROPIC_API_KEY="sk-ant-..."
+# Or
 export OPENAI_API_KEY="sk-..."
 # Or enter in GUI
 ```
+
+### "Model not found" (404 error)
+The dashboard automatically tries multiple Claude model versions. Test with:
+```bash
+python3 test_claude_api.py
+```
+
+See `CLAUDE_MODELS.md` for detailed model information.
 
 ### "Verification fails"
 - The LLM-generated proof may have errors
 - Click "Execute" again to regenerate
 - Or manually edit the .v file in pco_storage/
+
+### More Help
+- `TROUBLESHOOTING.md` - Complete troubleshooting guide
+- `CLAUDE_MODELS.md` - Claude model reference
+- `SETUP_CLAUDE.md` - Claude-specific setup
 
 ## Security Notes
 

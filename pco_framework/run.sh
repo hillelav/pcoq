@@ -29,16 +29,22 @@ python3 -c "import tkinter" 2>/dev/null || {
     exit 1
 }
 
-python3 -c "import openai" 2>/dev/null || {
-    echo "⚠️  Warning: openai package not installed"
-    echo "   Install: pip install openai"
-    echo ""
-}
+# Check LLM packages
+HAS_CLAUDE=$(python3 -c "import anthropic" 2>/dev/null && echo "yes" || echo "no")
+HAS_OPENAI=$(python3 -c "import openai" 2>/dev/null && echo "yes" || echo "no")
 
-# Check API key
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo "⚠️  Warning: OPENAI_API_KEY not set"
-    echo "   You can enter it in the dashboard GUI"
+if [ "$HAS_CLAUDE" = "no" ] && [ "$HAS_OPENAI" = "no" ]; then
+    echo "⚠️  Warning: No LLM package installed"
+    echo "   Install: pip install anthropic  (for Claude)"
+    echo "   Or:      pip install openai     (for OpenAI)"
+    echo ""
+fi
+
+# Check API keys
+if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ]; then
+    echo "⚠️  Warning: No API key set"
+    echo "   Set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+    echo "   Or enter it in the dashboard GUI"
     echo ""
 fi
 

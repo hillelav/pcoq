@@ -1,1 +1,3 @@
-openai>=1.0.0
+# Choose one or both:
+anthropic>=0.18.0   # For Claude API
+openai>=1.0.0       # For OpenAI API
