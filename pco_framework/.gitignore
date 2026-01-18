@@ -1,0 +1,8 @@
+# PCO Storage (generated files)
+pco_storage/
+*.pyc
+__pycache__/
+.DS_Store
+
+# Keep the directory structure
+!pco_storage/.gitkeep
