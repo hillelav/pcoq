@@ -1,0 +1,14 @@
+[
+  {
+    "hash": "49a09459dcae5187e94833426eb2fb92904e7c48923fe8bf5800331b254ee970",
+    "type": "tax_return",
+    "timestamp": "2026-01-19T14:28:04.323795",
+    "file": "document_storage/tax_return_49a09459dcae5187.json"
+  },
+  {
+    "hash": "a927f2e8fe3c6cf23a9067a9ff084c209f4f4c3cfd7b07706d85a896a096e5a1",
+    "type": "income_statement",
+    "timestamp": "2026-01-19T14:28:04.324063",
+    "file": "document_storage/income_statement_a927f2e8fe3c6cf2.json"
+  }
+]

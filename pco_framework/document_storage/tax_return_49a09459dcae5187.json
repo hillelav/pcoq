@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-01-19T14:28:04.323795",
+  "type": "tax_return",
+  "data": {
+    "taxpayer_id": "123-45-6789",
+    "year": 2024,
+    "filing_status": "Single",
+    "income": {
+      "wages": 85000,
+      "interest": 1200,
+      "total": 86200
+    },
+    "deductions": {
+      "standard": 13850,
+      "itemized": 0,
+      "total": 13850
+    },
+    "taxable_income": 72350,
+    "tax_owed": 10600
+  },
+  "hash": "49a09459dcae5187e94833426eb2fb92904e7c48923fe8bf5800331b254ee970"
+}

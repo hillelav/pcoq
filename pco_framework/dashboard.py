@@ -136,6 +136,8 @@ class PCODashboard:
         self.current_proof_file = None
         self.current_proposition = None
         self.verification_passed = False
+        self.loaded_document = None
+        self.document_hash = None
         
         self.create_widgets()
     
@@ -209,6 +211,16 @@ class PCODashboard:
         
         config_frame.columnconfigure(1, weight=1)
         
+        # Document Loading Section
+        doc_frame = ttk.LabelFrame(self.verify_tab, text="Document Data (Optional)", padding=10)
+        doc_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        ttk.Button(doc_frame, text="Load Documents", 
+                   command=self.load_documents, width=20).pack(side=tk.LEFT, padx=5)
+        
+        self.doc_status_var = tk.StringVar(value="No document loaded")
+        ttk.Label(doc_frame, textvariable=self.doc_status_var).pack(side=tk.LEFT, padx=10)
+        
         # Action Buttons
         button_frame = tk.Frame(self.verify_tab)
         button_frame.pack(pady=10)
@@ -216,6 +228,9 @@ class PCODashboard:
         self.execute_btn = ttk.Button(button_frame, text="Execute (Generate & Verify)", 
                                        command=self.execute_pipeline, width=25)
         self.execute_btn.pack(side=tk.LEFT, padx=5)
+        
+        ttk.Button(button_frame, text="Load Existing Proof", 
+                   command=self.load_existing_proof, width=20).pack(side=tk.LEFT, padx=5)
         
         self.record_btn = ttk.Button(button_frame, text="Record to Blockchain", 
                                       command=self.record_to_blockchain, state=tk.DISABLED, width=25)
@@ -283,6 +298,177 @@ class PCODashboard:
         text.insert(1.0, prompt)
         text.config(state=tk.DISABLED)
     
+    def load_documents(self):
+        """Load document data (JSON) to use in proof generation"""
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select Document (JSON)",
+            initialdir=str(Path("sample_documents")),
+            filetypes=[
+                ("JSON files", "*.json"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            return  # User cancelled
+        
+        file_path = Path(file_path)
+        
+        try:
+            # Read JSON document
+            with open(file_path, 'r') as f:
+                self.loaded_document = json.load(f)
+            
+            # Compute document hash
+            doc_content = json.dumps(self.loaded_document, sort_keys=True)
+            self.document_hash = hashlib.sha256(doc_content.encode()).hexdigest()
+            
+            # Update status
+            doc_type = self.loaded_document.get('document_type', 'unknown')
+            self.doc_status_var.set(f"Loaded: {doc_type} (hash: {self.document_hash[:16]}...)")
+            
+            # Log to output
+            self.output_text.delete(1.0, tk.END)
+            self.log("=" * 70)
+            self.log(f"Document Loaded: {file_path.name}")
+            self.log("=" * 70)
+            self.log()
+            self.log(f"Document Type: {doc_type}")
+            self.log(f"Document Hash: {self.document_hash}")
+            self.log()
+            self.log("Document Data:")
+            self.log(json.dumps(self.loaded_document, indent=2))
+            self.log()
+            self.log("✓ Document ready for proof generation")
+            self.log("Click 'Execute' to generate proof using this data")
+            self.log()
+            
+            messagebox.showinfo("Document Loaded", 
+                              f"Successfully loaded {doc_type}\n"
+                              f"Hash: {self.document_hash[:32]}...\n\n"
+                              f"Click 'Execute' to generate proof")
+        
+        except json.JSONDecodeError as e:
+            messagebox.showerror("Error", f"Invalid JSON file: {e}")
+            self.doc_status_var.set("Error loading document")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load document: {e}")
+            self.doc_status_var.set("Error loading document")
+    
+    def load_existing_proof(self):
+        """Load and verify an existing Coq proof file"""
+        # Open file dialog
+        file_path = filedialog.askopenfilename(
+            title="Select Coq Proof File",
+            initialdir=str(Path.home() / "Documents/project/pcoq_trunk/pcoq"),
+            filetypes=[
+                ("Coq files", "*.v"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if not file_path:
+            return  # User cancelled
+        
+        file_path = Path(file_path)
+        
+        self.output_text.delete(1.0, tk.END)
+        self.verification_passed = False
+        self.record_btn.config(state=tk.DISABLED)
+        
+        self.log("=" * 70)
+        self.log(f"Loading Existing Proof: {file_path.name}")
+        self.log("=" * 70)
+        self.log()
+        
+        # Read the file
+        self.log(f"Reading: {file_path}")
+        try:
+            with open(file_path, 'r') as f:
+                proof_content = f.read()
+            
+            self.log(f"✓ Loaded {len(proof_content)} characters")
+            self.log()
+            
+            # Extract proposition name (look for first Theorem/Definition/Lemma)
+            import re
+            match = re.search(r'(Theorem|Definition|Lemma|Example)\s+(\w+)', proof_content)
+            if match:
+                proposition = match.group(2)
+                self.log(f"✓ Found proposition: {proposition}")
+            else:
+                proposition = file_path.stem
+                self.log(f"✓ Using filename as proposition: {proposition}")
+            
+            self.current_proposition = proposition
+            self.log()
+            
+            # Copy to pco_storage
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stored_filename = f"loaded_{file_path.stem}_{timestamp}.v"
+            stored_path = self.storage_dir / stored_filename
+            
+            with open(stored_path, 'w') as f:
+                f.write(proof_content)
+            
+            self.current_proof_file = stored_path
+            self.log(f"✓ Copied to: {stored_path}")
+            self.log()
+            
+        except Exception as e:
+            self.log(f"❌ Error loading file: {e}")
+            self.status_var.set(f"Error loading file")
+            return
+        
+        # Verify with Coq
+        verifier = self.verifier_var.get()
+        self.status_var.set(f"Verifying with {verifier}...")
+        self.log(f"Step 2: Verifying with {verifier}...")
+        
+        try:
+            result = subprocess.run(
+                [verifier, str(stored_path)],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            self.log(f"Verifier output:")
+            self.log(result.stdout)
+            
+            if result.stderr:
+                self.log(f"Errors:")
+                self.log(result.stderr)
+            
+            if result.returncode == 0:
+                self.log()
+                self.log("=" * 70)
+                self.log("✅ VERIFICATION: PASS")
+                self.log("=" * 70)
+                self.verification_passed = True
+                self.record_btn.config(state=tk.NORMAL)
+                self.status_var.set("PASS - Ready to record")
+                messagebox.showinfo("Verification Result", "PASS ✓\nProof is valid!")
+            else:
+                self.log()
+                self.log("=" * 70)
+                self.log("❌ VERIFICATION: FAIL")
+                self.log("=" * 70)
+                self.status_var.set("FAIL - Proof invalid")
+                messagebox.showerror("Verification Result", "FAIL ✗\nProof has errors")
+        
+        except subprocess.TimeoutExpired:
+            self.log("❌ Verification timeout")
+            self.status_var.set("Error: Timeout")
+        except FileNotFoundError:
+            self.log(f"❌ Verifier '{verifier}' not found")
+            self.log("Install Coq: brew install coq")
+            self.status_var.set(f"Error: {verifier} not found")
+        except Exception as e:
+            self.log(f"❌ Error: {e}")
+            self.status_var.set(f"Error: {e}")
+    
     def execute_pipeline(self):
         """Execute: LLM generate → Verify → Show result"""
         self.output_text.delete(1.0, tk.END)
@@ -309,8 +495,20 @@ class PCODashboard:
             self.status_var.set("Error: No API key")
             return
         
+        # Prepare prompt (with document data if loaded)
+        prompt = PCO_PROMPTS[use_case]
+        if self.loaded_document:
+            self.log(f"Using loaded document data (hash: {self.document_hash[:16]}...)")
+            self.log()
+            # Add document data to prompt
+            doc_data_str = json.dumps(self.loaded_document, indent=2)
+            prompt = f"{prompt}\n\nUSE THIS ACTUAL DATA in your proof:\n```json\n{doc_data_str}\n```\n\n" \
+                    f"Generate a proof that uses the specific values from this document.\n" \
+                    f"For example, if income is {self.loaded_document.get('income', {}).get('total_income', 'N/A')}, " \
+                    f"use that exact value in the Example."
+        
         try:
-            coq_code, proposition = self.call_llm(PCO_PROMPTS[use_case], api_key, llm_provider)
+            coq_code, proposition = self.call_llm(prompt, api_key, llm_provider)
             self.current_proposition = proposition
             
             self.log(f"✓ Generated Coq code ({len(coq_code)} chars)")
@@ -618,15 +816,27 @@ Proof. Admitted."""
             proof_hash = hashlib.sha256(combined.encode()).hexdigest()
             
             # Create blockchain record
+            # Determine use case (from dropdown or filename)
+            use_case = self.use_case_var.get() if hasattr(self, 'use_case_var') else "loaded_proof"
+            if str(self.current_proof_file).startswith("loaded_"):
+                # Extract from filename if it was a loaded proof
+                use_case = "loaded_proof"
+            
             record = {
                 "timestamp": datetime.now().isoformat(),
-                "use_case": self.use_case_var.get(),
+                "use_case": use_case,
                 "proposition": self.current_proposition,
                 "verifier": self.verifier_var.get(),
                 "hash": proof_hash,
                 "proof_file": str(self.current_proof_file),
                 "verification_status": "PASS"
             }
+            
+            # Add document hash if a document was loaded
+            if self.document_hash:
+                record["document_hash"] = self.document_hash
+                record["document_type"] = self.loaded_document.get('document_type', 'unknown')
+                self.log(f"✓ Linked to document: {self.document_hash[:32]}...")
             
             self.blockchain.append(record)
             self.save_blockchain()

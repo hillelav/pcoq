@@ -1,0 +1,15 @@
+{
+  "timestamp": "2026-01-19T14:28:04.324063",
+  "type": "income_statement",
+  "data": {
+    "taxpayer_id": "123-45-6789",
+    "employer": "ACME Corp",
+    "year": 2024,
+    "gross_income": 85000,
+    "federal_withholding": 12000,
+    "state_withholding": 4000,
+    "social_security": 5270,
+    "medicare": 1232
+  },
+  "hash": "a927f2e8fe3c6cf23a9067a9ff084c209f4f4c3cfd7b07706d85a896a096e5a1"
+}
