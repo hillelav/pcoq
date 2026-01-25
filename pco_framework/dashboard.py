@@ -587,11 +587,12 @@ class PCODashboard:
         """
         import re
         
-        # Valid Coq starting keywords
+        # Valid Coq starting keywords (including "From" for deprecated syntax we'll fix)
         coq_keywords = [
             'Require', 'Import', 'Open', 'Inductive', 'Definition', 'Fixpoint',
             'Theorem', 'Lemma', 'Example', 'CoInductive', 'Record', 'Structure',
             'Module', 'Section', 'Variable', 'Axiom', 'Parameter', 'Hypothesis',
+            'From',  # Will be fixed below
             '(*'  # Comment
         ]
         
@@ -608,7 +609,7 @@ class PCODashboard:
         # Take everything from that line onward
         cleaned_lines = lines[start_idx:]
         
-        # Remove file header lines like "File 1: TaxLaw.v" that might appear later
+        # Remove file header lines and fix deprecated syntax
         result_lines = []
         for line in cleaned_lines:
             stripped = line.strip()
@@ -618,48 +619,96 @@ class PCODashboard:
             # Skip section headers that aren't Coq syntax
             if re.match(r'^[A-Za-z\s]+\.v\s*$', stripped):
                 continue
+            
+            # FIX DEPRECATED SYNTAX: Convert "From Coq" to "From Stdlib"
+            from_coq_match = re.match(r'^From\s+Coq\s+Require\s+Import\s+(.+?)\.?\s*$', stripped)
+            if from_coq_match:
+                module_path = from_coq_match.group(1).strip()
+                indent = line[:len(line) - len(line.lstrip())]
+                line = f"{indent}From Stdlib Require Import {module_path}."
+                try:
+                    self.log(f"  [Auto-fixed] 'From Coq' → 'From Stdlib'")
+                except:
+                    pass
+            
+            # Also convert old "Require Import Coq.X.Y" to "From Stdlib Require Import X.Y"
+            old_require_match = re.match(r'^Require\s+Import\s+Coq\.(.+?)\.?\s*$', stripped)
+            if old_require_match:
+                module_path = old_require_match.group(1).strip()
+                indent = line[:len(line) - len(line.lstrip())]
+                line = f"{indent}From Stdlib Require Import {module_path}."
+                try:
+                    self.log(f"  [Auto-fixed] Old syntax → 'From Stdlib'")
+                except:
+                    pass
+            
             result_lines.append(line)
         
         return '\n'.join(result_lines).strip()
     
-    def call_llm(self, prompt, api_key, provider="claude"):
+    def call_llm(self, prompt, api_key, provider="claude", model=None):
         """
         Call LLM API to generate Coq code.
-        Returns: (coq_code, proposition_name)
+        Returns: (coq_code, proposition_name, token_info)
+        
+        Args:
+            prompt: User prompt
+            api_key: API key for the provider
+            provider: "claude", "openai", or "gemini"
+            model: Specific model to use (optional, uses defaults if None)
+        
+        Returns:
+            tuple: (coq_code, proposition_name, token_info)
+                   token_info is dict with keys: input_tokens, output_tokens, total_tokens
         """
-        system_prompt = """You are a Coq proof assistant. Generate complete, compilable Coq code.
+        system_prompt = """You are a Coq proof assistant. Generate MINIMAL, compilable Coq code.
+
+TARGET: Rocq Prover 9.1.0 (formerly Coq 9.1.0)
 
 CRITICAL REQUIREMENTS:
-1. Output ONLY valid Coq code that compiles with coqc
-2. Start directly with Coq keywords (Require, Inductive, Definition, etc.)
-3. Do NOT include explanatory text, markdown, or file headers
-4. Keep the code simple and self-contained - one file only
-5. For Z comparisons in if-then-else: use <=?, <? (boolean comparisons)
-6. For Z comparisons in Theorem/Lemma: use <=, < (Prop comparisons)
-7. For Z arithmetic, open ZArith scope: Local Open Scope Z_scope.
-8. For ALL proofs, use: Proof. Admitted. (NOT Qed - just Admitted alone)
-9. Include a simple Example or Theorem
+1. Output ONLY valid Coq code that compiles with coqc (Rocq 9.1.0)
+2. NO comments, NO explanatory text, NO markdown
+3. MINIMAL code - use simplified tax brackets (2-3 brackets max)
+4. For Z comparisons in if-then-else: use <=?, <? (boolean comparisons)
+5. For Z comparisons in Theorem/Lemma: use <=, < (Prop comparisons)
+6. For ALL proofs: Proof. Admitted. (NOT Qed)
+7. MANDATORY: Use "From Stdlib" import syntax (Rocq/Coq 9.0+ compatible)
+8. NEVER use deprecated "From Coq" or "Require Import Coq.X.Y" syntax
+9. Keep total code under 50 lines
 
-Example structure:
-Require Import Coq.ZArith.ZArith.
+SYNTAX ERRORS TO AVOID:
+- ALWAYS close 'match' expressions with 'end'
+- ALWAYS complete 'let x := ... in <expression>' (not just 'let x := ... in')
+- ALWAYS balance parentheses: ( )
+- ALWAYS use division: x * 10 / 100 (NOT: x * 10 100)
+- NEVER leave dangling 'in' or 'then' without result expression
+
+MINIMAL EXAMPLE (copy this structure exactly):
+From Stdlib Require Import ZArith.ZArith.
 Local Open Scope Z_scope.
 
 Inductive FilingStatus := Single | Married.
 
 Definition compute_tax (income : Z) (status : FilingStatus) : Z :=
-  let deduction := match status with Single => 13850 | Married => 27700 end in
-  let taxable := if income <=? deduction then 0 else income - deduction in  (* Use <=? in if-then *)
-  (* Use nested if-then-else for tax brackets - simple and clear *)
-  if taxable <=? 11000 then taxable * 10 / 100
-  else if taxable <=? 44725 then 1100 + (taxable - 11000) * 12 / 100
-  else if taxable <=? 95375 then 5147 + (taxable - 44725) * 22 / 100
-  else 16290 + (taxable - 95375) * 24 / 100.
+  let deduction := match status with Single => 12000 | Married => 24000 end in
+  let taxable := if income <=? deduction then 0 else income - deduction in
+  if taxable <=? 50000 then taxable * 10 / 100
+  else 5000 + (taxable - 50000) * 20 / 100.
 
-Example test_single : compute_tax 50000 Single = 4800.
+Example test_single : compute_tax 60000 Single = 4800.
 Proof. Admitted.
 
-Theorem tax_is_nonneg : forall income status, 0 <= compute_tax income status.  (* Use <= in Theorem *)
-Proof. Admitted."""
+Theorem tax_is_nonneg : forall income status, 0 <= compute_tax income status.
+Proof. Admitted.
+
+KEEP IT SHORT - no verbose comments!"""
+        
+        # Track token counts
+        token_info = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0
+        }
         
         try:
             if provider == "claude":
@@ -702,6 +751,13 @@ Proof. Admitted."""
                             )
                             
                             full_response = response.content[0].text
+                            
+                            # Extract token counts from Claude response
+                            if hasattr(response, 'usage'):
+                                token_info["input_tokens"] = getattr(response.usage, 'input_tokens', 0)
+                                token_info["output_tokens"] = getattr(response.usage, 'output_tokens', 0)
+                                token_info["total_tokens"] = token_info["input_tokens"] + token_info["output_tokens"]
+                            
                             self.log(f"✓ Successfully using model: {model} (max_tokens: {max_tokens})")
                             break
                         except Exception as model_error:
@@ -752,8 +808,12 @@ Proof. Admitted."""
                 try:
                     client = OpenAI(api_key=api_key)
                     
+                    # Use provided model or default to gpt-4-turbo
+                    openai_model = model if model else "gpt-4-turbo"
+                    self.log(f"Using OpenAI model: {openai_model}")
+                    
                     response = client.chat.completions.create(
-                        model="gpt-4",
+                        model=openai_model,
                         messages=[
                             {"role": "system", "content": system_prompt},
                             {"role": "user", "content": prompt}
@@ -763,10 +823,373 @@ Proof. Admitted."""
                     )
                     
                     full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from OpenAI response
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
                 
                 except Exception as api_error:
                     error_msg = repr(api_error)
                     raise Exception(f"OpenAI API error: {error_msg}")
+            
+            elif provider == "llama" or provider == "groq":
+                # Use Groq API (OpenAI-compatible, very fast)
+                try:
+                    from openai import OpenAI
+                except ImportError:
+                    raise Exception("openai package not installed. Run: pip install openai")
+                
+                try:
+                    # Groq uses OpenAI SDK with custom base URL
+                    client = OpenAI(
+                        api_key=api_key,
+                        base_url="https://api.groq.com/openai/v1"
+                    )
+                    
+                    # Use provided model or default to llama-3.3-70b
+                    groq_model = model if model else "llama-3.3-70b-versatile"
+                    self.log(f"Using Groq model: {groq_model}")
+                    
+                    response = client.chat.completions.create(
+                        model=groq_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    
+                    full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from Groq response (OpenAI-compatible)
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Groq API error: {error_msg}")
+            
+            elif provider == "deepseek":
+                # Use DeepSeek API (OpenAI-compatible, excellent & cheap)
+                try:
+                    from openai import OpenAI
+                except ImportError:
+                    raise Exception("openai package not installed. Run: pip install openai")
+                
+                try:
+                    client = OpenAI(
+                        api_key=api_key,
+                        base_url="https://api.deepseek.com",
+                        timeout=45.0  # 45 second timeout (deepseek-chat: 6s, deepseek-reasoner: 14s)
+                    )
+                    
+                    deepseek_model = model if model else "deepseek-chat"
+                    self.log(f"Using DeepSeek model: {deepseek_model}")
+                    
+                    response = client.chat.completions.create(
+                        model=deepseek_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=2000,  # Reduced from 4000 to speed up generation
+                        timeout=45.0  # Request-level timeout
+                    )
+                    
+                    full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from DeepSeek response (OpenAI-compatible)
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"DeepSeek API error: {error_msg}")
+            
+            elif provider == "together":
+                # Use Together AI (OpenAI-compatible, many models)
+                try:
+                    from openai import OpenAI
+                except ImportError:
+                    raise Exception("openai package not installed. Run: pip install openai")
+                
+                try:
+                    client = OpenAI(
+                        api_key=api_key,
+                        base_url="https://api.together.xyz/v1"
+                    )
+                    
+                    together_model = model if model else "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+                    self.log(f"Using Together AI model: {together_model}")
+                    
+                    response = client.chat.completions.create(
+                        model=together_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    
+                    full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from Together AI response (OpenAI-compatible)
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Together AI API error: {error_msg}")
+            
+            elif provider == "perplexity":
+                # Use Perplexity AI (OpenAI-compatible, search-enhanced)
+                try:
+                    from openai import OpenAI
+                except ImportError:
+                    raise Exception("openai package not installed. Run: pip install openai")
+                
+                try:
+                    client = OpenAI(
+                        api_key=api_key,
+                        base_url="https://api.perplexity.ai"
+                    )
+                    
+                    perplexity_model = model if model else "llama-3.1-sonar-large-128k-online"
+                    self.log(f"Using Perplexity model: {perplexity_model}")
+                    
+                    response = client.chat.completions.create(
+                        model=perplexity_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    
+                    full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from Perplexity response (OpenAI-compatible)
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Perplexity API error: {error_msg}")
+            
+            elif provider == "mistral":
+                # Use Mistral AI (native SDK)
+                try:
+                    from mistralai import Mistral
+                except ImportError:
+                    raise Exception("mistralai package not installed. Run: pip install mistralai")
+                
+                try:
+                    client = Mistral(api_key=api_key)
+                    
+                    mistral_model = model if model else "mistral-large-latest"
+                    self.log(f"Using Mistral model: {mistral_model}")
+                    
+                    response = client.chat.complete(
+                        model=mistral_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    
+                    full_response = response.choices[0].message.content
+                    
+                    # Extract token counts from Mistral response
+                    if hasattr(response, 'usage'):
+                        token_info["input_tokens"] = getattr(response.usage, 'prompt_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.usage, 'completion_tokens', 0)
+                        token_info["total_tokens"] = getattr(response.usage, 'total_tokens', 0)
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Mistral API error: {error_msg}")
+            
+            elif provider == "cohere":
+                # Use Cohere AI (native SDK)
+                try:
+                    import cohere
+                except ImportError:
+                    raise Exception("cohere package not installed. Run: pip install cohere")
+                
+                try:
+                    client = cohere.Client(api_key=api_key)
+                    
+                    cohere_model = model if model else "command-r-plus"
+                    self.log(f"Using Cohere model: {cohere_model}")
+                    
+                    # Cohere uses different API format
+                    response = client.chat(
+                        model=cohere_model,
+                        message=prompt,
+                        preamble=system_prompt,
+                        temperature=0.7,
+                        max_tokens=4000
+                    )
+                    
+                    full_response = response.text
+                    
+                    # Extract token counts from Cohere response
+                    if hasattr(response, 'meta') and hasattr(response.meta, 'tokens'):
+                        token_info["input_tokens"] = getattr(response.meta.tokens, 'input_tokens', 0)
+                        token_info["output_tokens"] = getattr(response.meta.tokens, 'output_tokens', 0)
+                        token_info["total_tokens"] = token_info["input_tokens"] + token_info["output_tokens"]
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Cohere API error: {error_msg}")
+            
+            elif provider == "gemini":
+                # Use Google Gemini API
+                try:
+                    import google.generativeai as genai
+                except ImportError:
+                    raise Exception("google-generativeai package not installed. Run: pip install google-generativeai")
+                
+                import time
+                
+                try:
+                    genai.configure(api_key=api_key)
+                    
+                    # Use provided model or default to gemini-2.5-flash (fastest)
+                    if model:
+                        # Ensure models/ prefix
+                        model_name = model if model.startswith("models/") else f"models/{model}"
+                    else:
+                        model_name = "models/gemini-2.5-flash"
+                    
+                    # Configure safety settings to be permissive for technical/legal content
+                    safety_settings = [
+                        {
+                            "category": "HARM_CATEGORY_HARASSMENT",
+                            "threshold": "BLOCK_NONE"
+                        },
+                        {
+                            "category": "HARM_CATEGORY_HATE_SPEECH",
+                            "threshold": "BLOCK_NONE"
+                        },
+                        {
+                            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                            "threshold": "BLOCK_NONE"
+                        },
+                        {
+                            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                            "threshold": "BLOCK_NONE"
+                        },
+                    ]
+                    
+                    gemini_model = genai.GenerativeModel(
+                        model_name,
+                        safety_settings=safety_settings
+                    )
+                    self.log(f"Using Gemini model: {model_name}")
+                    
+                    # Combine system prompt and user prompt for Gemini
+                    combined_prompt = f"{system_prompt}\n\n{prompt}"
+                    
+                    # Retry logic for safety filter issues
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            response = gemini_model.generate_content(
+                                combined_prompt,
+                                generation_config=genai.types.GenerationConfig(
+                                    temperature=0.7,  # Standard temperature for better speed
+                                    max_output_tokens=2048,  # Smaller = faster
+                                    stop_sequences=None,
+                                )
+                            )
+                            
+                            # Safely check response
+                            try:
+                                full_response = response.text
+                                if not full_response:
+                                    raise ValueError("Empty response")
+                                
+                                # Extract token counts from Gemini response
+                                if hasattr(response, 'usage_metadata'):
+                                    token_info["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0)
+                                    token_info["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0)
+                                    token_info["total_tokens"] = getattr(response.usage_metadata, 'total_token_count', 0)
+                                
+                                # Success! Break out of retry loop
+                                break
+                                
+                            except ValueError as e:
+                                # response.text accessor failed - check why
+                                if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
+                                    feedback = response.prompt_feedback
+                                    if attempt < max_retries - 1:
+                                        self.log(f"  Gemini safety filter (attempt {attempt+1}/{max_retries}), retrying...")
+                                        time.sleep(1)
+                                        continue
+                                    raise Exception(f"Gemini blocked prompt after {max_retries} attempts: {feedback}")
+                                    
+                                elif hasattr(response, 'candidates') and response.candidates:
+                                    # Check candidate finish reasons
+                                    candidate = response.candidates[0]
+                                    finish_reason = getattr(candidate, 'finish_reason', 'UNKNOWN')
+                                    
+                                    # finish_reason: 1=STOP (success), 2=MAX_TOKENS, 3=SAFETY, 4=RECITATION, 5=OTHER
+                                    if finish_reason == 2:  # MAX_TOKENS - try to get partial response
+                                        try:
+                                            partial_text = candidate.content.parts[0].text
+                                            if partial_text and len(partial_text) > 100:
+                                                self.log(f"  [Warning] Gemini hit MAX_TOKENS, using partial response")
+                                                full_response = partial_text
+                                                
+                                                # Extract token counts even for partial response
+                                                if hasattr(response, 'usage_metadata'):
+                                                    token_info["input_tokens"] = getattr(response.usage_metadata, 'prompt_token_count', 0)
+                                                    token_info["output_tokens"] = getattr(response.usage_metadata, 'candidates_token_count', 0)
+                                                    token_info["total_tokens"] = getattr(response.usage_metadata, 'total_token_count', 0)
+                                                
+                                                break  # Accept partial response
+                                        except:
+                                            pass
+                                        raise Exception(f"Gemini response truncated (MAX_TOKENS) and couldn't extract partial response")
+                                    
+                                    elif finish_reason == 3 and attempt < max_retries - 1:  # SAFETY
+                                        self.log(f"  Gemini safety filter (attempt {attempt+1}/{max_retries}), retrying...")
+                                        time.sleep(1)
+                                        continue
+                                    
+                                    safety_ratings = getattr(candidate, 'safety_ratings', [])
+                                    raise Exception(f"Gemini response blocked after {max_retries} attempts: finish_reason={finish_reason}")
+                                else:
+                                    raise Exception(f"Gemini response.text failed: {str(e)}")
+                                    
+                        except Exception as retry_error:
+                            if attempt < max_retries - 1:
+                                self.log(f"  Gemini error (attempt {attempt+1}/{max_retries}): {str(retry_error)[:50]}, retrying...")
+                                time.sleep(1)
+                                continue
+                            else:
+                                raise
+                
+                except Exception as api_error:
+                    error_msg = repr(api_error)
+                    raise Exception(f"Gemini API error: {error_msg}")
             
             else:
                 raise Exception(f"Unknown provider: {provider}")
@@ -782,12 +1205,35 @@ Proof. Admitted."""
             # Clean up the code: remove explanatory text and file headers
             coq_code = self._clean_coq_code(coq_code)
             
-            # Extract proposition name (look for Theorem/Definition)
+            # BELT-AND-SUSPENDERS: Convert to Coq 9.0+ syntax
             import re
+            
+            # Convert "Require Import Coq.X.Y" to "From Stdlib Require Import X.Y"
+            coq_code = re.sub(
+                r'Require\s+Import\s+Coq\.([^\s.]+(?:\.[^\s.]+)*)\s*\.',
+                r'From Stdlib Require Import \1.',
+                coq_code
+            )
+            
+            # Convert "From Coq" to "From Stdlib"
+            coq_code = re.sub(
+                r'From\s+Coq\s+Require\s+Import',
+                r'From Stdlib Require Import',
+                coq_code
+            )
+            
+            # Fix unterminated comments (truncation handling)
+            open_comments = coq_code.count('(*')
+            close_comments = coq_code.count('*)')
+            if open_comments > close_comments:
+                coq_code += '\n' + ('*)' * (open_comments - close_comments))
+                self.log(f"  [Auto-fixed] Closed {open_comments - close_comments} unterminated comment(s)")
+            
+            # Extract proposition name (look for Theorem/Definition)
             match = re.search(r'(Theorem|Definition|Lemma)\s+(\w+)', coq_code)
             proposition = match.group(2) if match else "unknown_proposition"
             
-            return coq_code, proposition
+            return coq_code, proposition, token_info
         
         except Exception as e:
             # Use repr to avoid encoding issues with exception messages
