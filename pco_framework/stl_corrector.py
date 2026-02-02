@@ -51,11 +51,12 @@ class STLCorrector:
             (r'=>', ' implies '),
             (r'→', ' implies '),
             
-            # Variable name corrections
-            (r'velocity', 'speed'),
-            (r'acceleration', 'lateral_accel'),
-            (r'deceleration', 'decel'),
-            (r'yaw', 'yaw_rate'),
+            # Variable name corrections (order matters!)
+            (r'\byaw_rate_rate\b', 'yaw_rate'),  # Fix SLM hallucination (must be first!)
+            (r'\bvelocity\b', 'speed'),
+            (r'\bacceleration\b', 'lateral_accel'),
+            (r'\bdeceleration\b', 'decel'),
+            (r'\byaw\b', 'yaw_rate'),
             
             # Time bound corrections
             (r'G\[', 'always['),
@@ -145,8 +146,8 @@ class STLTemplateLibrary:
         
         # Brake maneuver templates
         ('brake', 'easy'): "always[0:50](decel >= 0.0)",
-        ('brake', 'medium'): "always[0:50]((decel >= 0.0) and (decel <= 9.0))",
-        ('brake', 'hard'): "always[0:50]((decel >= 0.0) and (decel <= 8.0))",
+        ('brake', 'medium'): "always[0:50]((decel >= 0.0) and (decel <= 9.0) and (distance >= safe_dist))",
+        ('brake', 'hard'): "always[0:50]((decel >= 0.0) and (decel <= 8.0) and (distance >= safe_dist))",
     }
     
     @classmethod
@@ -189,8 +190,13 @@ STL Output: always[0:100](speed <= 30.0)
 
 EXAMPLE 2 (Medium - Turn):
 Task: During turn, maintain safe speed and limit lateral acceleration
-Variables: speed (mph), lateral_accel (m/s²), yaw_rate (rad/s)  
+Variables: speed (mph), lateral_accel (m/s²), yaw_rate (rad/s)
 STL Output: always[0:100]((speed <= 32.0) and (lateral_accel <= 3.5))
+
+EXAMPLE 3 (Complex - Turn with yaw_rate):
+Task: During turn, maintain controlled yaw rate below 0.5 rad/s
+Variables: speed (mph), lateral_accel (m/s²), yaw_rate (rad/s)
+STL Output: always[0:100]((yaw_rate >= 0.0) and (yaw_rate <= 0.5))
 """
             variables = "speed (mph), lateral_accel (m/s²), yaw_rate (rad/s)"
         
@@ -202,9 +208,14 @@ Variables: speed (mph), decel (m/s²), distance (m), safe_dist (m)
 STL Output: always[0:50](decel >= 0.0)
 
 EXAMPLE 2 (Medium - Brake):
-Task: Maintain safe deceleration limits during emergency braking
+Task: Emergency braking with safe deceleration and maintaining safe distance
 Variables: speed (mph), decel (m/s²), distance (m), safe_dist (m)
-STL Output: always[0:50]((decel >= 0.0) and (decel <= 9.0))
+STL Output: always[0:50]((decel >= 0.0) and (decel <= 9.0) and (distance >= safe_dist))
+
+EXAMPLE 3 (Complex - Brake with distance):
+Task: Maintain safe distance above threshold during braking
+Variables: speed (mph), decel (m/s²), distance (m), safe_dist (m)
+STL Output: always[0:50](distance >= safe_dist)
 """
             variables = "speed (mph), decel (m/s²), distance (m), safe_dist (m)"
         

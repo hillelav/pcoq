@@ -255,11 +255,17 @@ class TemporalLogicBenchmark:
         for key, values in base_trace.items():
             # Add very small random noise (±1%) to create variety without breaking specs
             noise_factor = 0.01
-            varied_trace[key] = [
+            noisy_values = [
                 v + random.uniform(-noise_factor * abs(v), noise_factor * abs(v)) 
                 if v != 0 else v + random.uniform(-0.01, 0.01)
                 for v in values
             ]
+            
+            # Keep non-negative variables non-negative (speed, decel, yaw_rate, distance)
+            if key in ['speed', 'decel', 'yaw_rate', 'distance']:
+                noisy_values = [max(0, v) for v in noisy_values]
+            
+            varied_trace[key] = noisy_values
         return varied_trace
     
     def _define_scenarios(self) -> Dict:
@@ -366,8 +372,11 @@ class TemporalLogicBenchmark:
         speed = [50.0 - i*1.0 for i in range(30)] + [max(0, 20.0 - (i-30)*1.5) for i in range(30, 51)]
         speed = [max(0, s) for s in speed]
         decel = [min(7.5, 3.0 + i*0.08) for i in range(30)] + [random.uniform(1.0, 3.0) for _ in range(30, 51)]
-        distance = [100.0 - sum([speed[j]/10 for j in range(i+1)]) for i in t]
+        
+        # Distance that maintains safe distance constraint (starts high, decreases but stays above safe threshold)
+        # Using a simpler model: distance decreases more slowly to stay above safe_dist
         safe_dist = [10.0] * 51
+        distance = [max(safe_dist[i] + 2.0, 80.0 - i*1.3) for i in t]  # Always >= safe_dist + 2m buffer
         
         return {
             'speed': speed,
