@@ -10,3 +10,64 @@ macOS:
 Ubuntu:
   sudo apt install coq
 
+
+## Running Benchmarks
+
+### Static Logic (Large LLMs + Coq Proofs)
+
+Tests large language models generating formal Coq proofs.
+
+```bash
+cd pco_framework
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set API keys (choose one or more)
+export ANTHROPIC_API_KEY="sk-ant-..."   # Claude
+export OPENAI_API_KEY="sk-..."          # GPT-4
+export GOOGLE_API_KEY="..."             # Gemini
+
+# Run benchmark
+python3 benchmark_static_logic.py
+```
+
+**Customize models:** Edit `llm_providers` list in `benchmark_static_logic.py`
+
+---
+
+### Temporal Logic (Small LLMs + STL Specs)
+
+Tests small language models generating Signal Temporal Logic specifications.
+
+```bash
+cd pco_framework
+
+# Install dependencies
+pip install rtamt requests
+
+# Option 1: Cloud (fast, free)
+export GROQ_API_KEY="gsk_..."           # Get at console.groq.com
+python3 benchmark_temporal_logic.py
+
+# Option 2: On-premises (private, local)
+brew install ollama
+ollama pull llama3.2:3b
+ollama serve
+python3 benchmark_temporal_logic.py     # Auto-detects Ollama
+```
+
+**Customize models:** Edit `slm_providers` list in `benchmark_temporal_logic.py` or modify `get_slm_provider()` in `real_slm_provider.py`
+
+---
+
+### View Results
+
+```bash
+# View graphs
+open benchmark_results/figure_*.pdf
+
+# Check statistics
+cat paper_export/*_summary_*.txt
+```
+
