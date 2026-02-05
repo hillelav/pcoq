@@ -11,6 +11,41 @@ Ubuntu:
   sudo apt install coq
 
 
+## Paper Examples
+
+Complete Coq specifications and proofs for three real-world compliance domains.
+
+### Compile All Examples
+
+```bash
+cd paper_examples
+python3 run.py
+```
+
+Compiles all domains in dependency order:
+- **tax**: IRS tax compliance (W-2s, 1099s, tax brackets)
+- **traffic**: Autonomous vehicle safety (speed limits, following distance)
+- **recommendation**: Fair product ranking (consumer protection)
+
+### Compile Individual Domain
+
+```bash
+cd paper_examples/tax
+coqc TaxCode.v
+coqc DocumentSpec.v
+coqc ComputeSpec.v
+coqc TaxProof_Example.v
+```
+
+### Clean Generated Files
+
+```bash
+cd paper_examples
+python3 clean.py  # Remove .vo, .vos, .vok, .glob
+```
+
+---
+
 ## Running Benchmarks
 
 ### Static Logic (Large LLMs + Coq Proofs)
@@ -70,4 +105,51 @@ open benchmark_results/figure_*.pdf
 # Check statistics
 cat paper_export/*_summary_*.txt
 ```
+
+---
+
+## Running the Dashboard (GUI)
+
+Interactive graphical interface for generating and verifying Coq proofs with LLMs.
+
+### Launch
+
+```bash
+cd pco_framework
+python3 dashboard.py
+```
+
+### Features
+
+**Generate & Verify:**
+- Select use case (tax, vehicle safety, consumer protection)
+- Choose LLM provider (Claude, GPT-4, Groq, Gemini, DeepSeek, etc.)
+- Generate Coq proofs from natural language
+- Verify with Coq compiler
+- Record to blockchain
+
+**Audit:**
+- View blockchain records
+- Verify proof integrity (hash validation)
+- Audit trail for compliance
+
+### Quick Start
+
+```bash
+# Set API key (or enter in GUI)
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Launch
+python3 dashboard.py
+
+# Then in GUI:
+# 1. Select use case
+# 2. Click "Execute"
+# 3. View verification result
+# 4. Click "Record to Blockchain"
+```
+
+**Outputs:**
+- `pco_storage/*.v` - Generated proofs
+- `pco_storage/blockchain.json` - Blockchain records
 
